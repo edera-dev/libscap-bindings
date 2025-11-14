@@ -29,6 +29,9 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Install llvm deps
+        uses: ./.github/actions/install-llvm
+
       - name: 'cargo fmt'
         run: cargo fmt --all -- --check
 
@@ -54,6 +57,9 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Install llvm deps
+        uses: ./.github/actions/install-llvm
+
       - name: cargo build
         run: cargo build
 
@@ -77,5 +83,9 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
+
+      - name: Install llvm deps
+        uses: ./.github/actions/install-llvm
+
       - name: 'cargo clippy'
         run: cargo clippy
