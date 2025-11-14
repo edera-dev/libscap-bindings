@@ -2,6 +2,8 @@
 
 Basic `bindgen` types and glue generated against [Falco's libscap C library](https://github.com/falcosecurity/libs/tree/master/userspace/libscap).
 
+Currently, only `gnu` and `musl` x86 targets are tested, and only Linux is supported.
+
 ## Usage
 
 This crate needs build tools and build libraries sufficient to compile Falco's `libscap` C lib, which is the bulk of what [`build.rs`](./build.rs) sets up.
