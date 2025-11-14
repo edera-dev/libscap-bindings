@@ -8,6 +8,11 @@ repository = "https://github.com/edera-dev/libscap-bindings"
 edition = "2024"
 keywords = ["falco", "libscap", "eBPF", "bindings"]
 categories = ["exteral-ffi-bindings", "os::linux-apis"]
+exclude = [
+        ".github",
+        ".release-plz.toml",
+        "**/*.orig"
+]
 
 [dependencies]
 anyhow = "1.0.99"
