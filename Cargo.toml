@@ -7,7 +7,7 @@ homepage = "https://github.com/edera-dev/libscap-bindings"
 repository = "https://github.com/edera-dev/libscap-bindings"
 edition = "2024"
 keywords = ["falco", "libscap", "eBPF", "bindings"]
-categories = ["exteral-ffi-bindings", "os::linux-apis"]
+categories = ["external-ffi-bindings", "os::linux-apis"]
 exclude = [
         ".github",
         ".release-plz.toml",
