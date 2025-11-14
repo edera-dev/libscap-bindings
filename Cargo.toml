@@ -3,10 +3,16 @@ name = "libscap-bindings"
 description = "Bindings for Falco's `libscap` eBPF monitoring backend C library"
 version = "0.0.1"
 license = "Apache-2.0"
-version = "0.0.1"
 homepage = "https://github.com/edera-dev/libscap-bindings"
 repository = "https://github.com/edera-dev/libscap-bindings"
 edition = "2024"
+keywords = ["falco", "libscap", "eBPF", "bindings"]
+categories = ["exteral-ffi-bindings", "os::linux-apis"]
+exclude = [
+        ".github",
+        ".release-plz.toml",
+        "**/*.orig"
+]
 
 [dependencies]
 anyhow = "1.0.99"
@@ -29,7 +35,7 @@ tar = "0.4.44"
 libc = "0.2.175"
 
 [target.'cfg(target_env = "musl")'.build-dependencies]
-bindgen = { workspace = true, default-features = false, features = ["logging", "prettyplease", "static"] }
+bindgen = { version = "0.72", default-features = false, features = ["logging", "prettyplease", "static"] }
 
 [features]
 default = ["full_bindings"]

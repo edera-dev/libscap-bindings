@@ -1,0 +1,10 @@
+name: 'Install LLVM Dependencies'
+description: 'Install LLVM and Clang dependencies'
+runs:
+  using: composite
+  steps:
+    - name: Install llvm deps
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake build-essential llvm-dev libclang-dev
