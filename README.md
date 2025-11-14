@@ -19,5 +19,5 @@ libscap-bindings = { version = 0.0.1, default-features = false }
 If that feature flag is **enabled** (as it is by default), the upstream libscap repo will be cloned, and a full C build will be performed, exposing function types and the full interop capability. This will also update/regen the checked-in simple types in `/src`.
 
 ``` toml
-libscap-bindings = { version = 0.0.1 }
+libscap-bindings = { version = 0.0.1, features = ["full_bindings"]}
 ```
