@@ -4,11 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - src/**
-      - Cargo.*
-      - rust-toolchain.toml
-      - .github/workflows/ci-code.yaml
 
 permissions:
   contents: read # Default token to read
