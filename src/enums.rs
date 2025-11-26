@@ -889,7 +889,9 @@ pub enum ppm_sc_code {
     PPM_SC_GETXATTRAT = 446,
     PPM_SC_SETXATTRAT = 447,
     PPM_SC_OPEN_TREE_ATTR = 448,
-    PPM_SC_MAX = 449,
+    PPM_SC_FILE_GETATTR = 449,
+    PPM_SC_FILE_SETATTR = 450,
+    PPM_SC_MAX = 451,
 }
 #[repr(u32)]
 #[non_exhaustive]
@@ -907,7 +909,7 @@ pub enum ppm_event_flags {
     EF_SKIPPARSERESET = 256,
     EF_OLD_VERSION = 512,
     EF_LARGE_PAYLOAD = 2048,
-    EF_TMP_CONVERTER_MANAGED = 4096,
+    EF_CONVERTER_MANAGED = 4096,
 }
 #[repr(u32)]
 #[non_exhaustive]
