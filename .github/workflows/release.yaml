@@ -21,7 +21,7 @@ jobs:
       id-token: write # Needed for trusted publishing
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
         with:
           egress-policy: audit
 
@@ -38,14 +38,14 @@ jobs:
         uses: ./.github/actions/install-llvm
 
       - name: generate cultivator token
-        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         id: generate-token
         with:
           app-id: "${{ secrets.EDERA_CULTIVATION_APP_ID }}"
           private-key: "${{ secrets.EDERA_CULTIVATION_APP_PRIVATE_KEY }}"
 
       - name: Run release-plz
-        uses: release-plz/action@1efcf74dfcd6e500990dad806e286899ae384064 # v0.5
+        uses: release-plz/action@487eb7b5c085a664d5c5ca05f4159bd9b591182a # v0.5
         with:
           command: release
         env:
@@ -65,7 +65,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
         with:
           egress-policy: audit
 
@@ -82,14 +82,14 @@ jobs:
         uses: ./.github/actions/install-llvm
 
       - name: generate cultivator token
-        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         id: generate-token
         with:
           app-id: "${{ secrets.EDERA_CULTIVATION_APP_ID }}"
           private-key: "${{ secrets.EDERA_CULTIVATION_APP_PRIVATE_KEY }}"
 
       - name: Run release-plz
-        uses: release-plz/action@1efcf74dfcd6e500990dad806e286899ae384064 # v0.5
+        uses: release-plz/action@487eb7b5c085a664d5c5ca05f4159bd9b591182a # v0.5
         with:
           command: release-pr
         env:
