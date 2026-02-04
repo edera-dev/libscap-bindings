@@ -84,16 +84,28 @@ fn main() {
     // so we can tell libscap's CMAKE to use the local one, rather than try to find a system binary.
     let relative_exe = fetch_bpftool(&repo_dir).expect("must fetch bpftool build dep");
 
-    let dst = cmake::Config::new(&repo_dir)
+    let mut cmake_config = cmake::Config::new(&repo_dir);
+    cmake_config
         .define("USE_BUNDLED_DEPS", "ON")
         .define("MODERN_BPFTOOL_EXE", relative_exe)
         .define("BUILD_LIBSCAP_GVISOR", "OFF")
         .define("CREATE_TEST_TARGETS", "OFF")
         .define("BUILD_LIBSCAP_MODERN_BPF", "ON")
         .define("ENABLE_PIC", "ON")
-        .define("MUSL_OPTIMIZED_BUILD", if is_musl { "ON" } else { "OFF" })
-        .build_target("scap")
-        .build();
+        .define("MUSL_OPTIMIZED_BUILD", if is_musl { "ON" } else { "OFF" });
+
+    // libscap eBPF prog loading fails the kernel verifier for kernels < 6.16
+    // if the eBPF objects built with newer clang (> 16 or so).
+    // However, when building under alpine/MUSL, we need static clang/llvm, which
+    // require newer, more complete clang-static package versions (20 or so).
+    // We get around that by building everything except the eBPF objects with one version
+    // of clang/llvm, but using a specific older version override to build the `modern_bpf` progs here.
+    if let Ok(clang_exe) = env::var("MODERN_CLANG_EXE") {
+        println!("cargo:info=Using MODERN_CLANG_EXE={}", clang_exe);
+        cmake_config.define("MODERN_CLANG_EXE", clang_exe);
+    }
+
+    let dst = cmake_config.build_target("scap").build();
 
     println!(
         "cargo:rustc-link-search=native={}/build/libbpf-prefix/src/libbpf-build/build",
