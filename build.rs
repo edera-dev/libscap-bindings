@@ -196,7 +196,6 @@ fn main() {
             .wrap_unsafe_ops(true)
             .rust_edition(bindgen::RustEdition::Edition2024)
             .parse_callbacks(Box::new(StrumMacroMungeCallback))
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
     }
 
     let enum_bindings = get_builder(&clang_args)
@@ -246,6 +245,7 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=inc/libscap.h");
 }
 
 /// This will check to see if a tarfile matching our desired checksum already exists
