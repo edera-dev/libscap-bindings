@@ -26,7 +26,7 @@ bindgen = { version = "0.72", default-features = false, features = [
   "prettyplease",
 ] }
 cmake = "0.1"
-flate2 = { version = "1.1.8", features = ["zlib-rs"], default-features = false }
+flate2 = { version = "1.1.9", features = ["zlib-rs"], default-features = false }
 reqwest = { version= "0.12.28", default-features = false, features = ["blocking", "rustls-tls"] }
 sha256 = "1.6.0"
 tar = "0.4.44"
