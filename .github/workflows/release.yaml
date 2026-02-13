@@ -45,7 +45,7 @@ jobs:
           private-key: "${{ secrets.EDERA_CULTIVATION_APP_PRIVATE_KEY }}"
 
       - name: Run release-plz
-        uses: release-plz/action@e592230ad39e3ec735402572601fc621aa24355c # v0.5
+        uses: release-plz/action@52440b50d383aa252927de395c8b2c1e0a9cf8e9 # v0.5
         with:
           command: release
         env:
@@ -89,7 +89,7 @@ jobs:
           private-key: "${{ secrets.EDERA_CULTIVATION_APP_PRIVATE_KEY }}"
 
       - name: Run release-plz
-        uses: release-plz/action@e592230ad39e3ec735402572601fc621aa24355c # v0.5
+        uses: release-plz/action@52440b50d383aa252927de395c8b2c1e0a9cf8e9 # v0.5
         with:
           command: release-pr
         env:
