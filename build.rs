@@ -91,6 +91,11 @@ fn main() {
         .define("BUILD_LIBSCAP_GVISOR", "OFF")
         .define("CREATE_TEST_TARGETS", "OFF")
         .define("BUILD_LIBSCAP_MODERN_BPF", "ON")
+        .define("CMAKE_INTERPROCEDURAL_OPTIMIZATION", "OFF")
+        .define("CMAKE_C_FLAGS", "-fno-lto")
+        .define("CMAKE_CXX_FLAGS", "-fno-lto")
+        .define("CMAKE_EXE_LINKER_FLAGS", "-fno-lto")
+        .define("CMAKE_SHARED_LINKER_FLAGS", "-fno-lto")
         .define("ENABLE_PIC", "ON")
         .define("MUSL_OPTIMIZED_BUILD", if is_musl { "ON" } else { "OFF" });
 
