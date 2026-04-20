@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.7](https://github.com/edera-dev/libscap-bindings/compare/v0.0.6...v0.0.7) - 2026-04-20
+
+### Other
+
+- Bump to reqwest 0.13 to get sysroots ([#69](https://github.com/edera-dev/libscap-bindings/pull/69))
+
 ## [0.0.6](https://github.com/edera-dev/libscap-bindings/compare/v0.0.5...v0.0.6) - 2026-03-02
 
 ### Other
