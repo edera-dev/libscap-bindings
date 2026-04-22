@@ -13,8 +13,9 @@ const BPFTOOL_ARM64_SHA: &str = "b53ff306dc1d51d64f13a2b717f6ba5687a3613b87277ad
 const BPFTOOL_AMD64_SHA: &str = "51ffd3dd4f46fdc46736433a971e828dc70835c6b18ad20cabffd10abcf00358";
 const BPFTOOL_RELEASE_URL: &str = "https://github.com/libbpf/bpftool/releases/download";
 
-const LIBSCAP_REPO: &str = "https://github.com/falcosecurity/libs.git";
-const LIBSCAP_CHECKOUT_SHA: &str = "7250ae96aa8878385f85a5643a43459d3d32fca4";
+const LIBSCAP_REPO: &str = "https://github.com/sveith/falcosecurity-libs.git";
+// https://github.com/sveith/falcosecurity-libs/tree/ignore-discarded-qualifiers/0.23.x
+const LIBSCAP_CHECKOUT_SHA: &str = "40dd375116291123c8e6acc34ec2aa69fcb23656";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_FULL_BINDINGS");
