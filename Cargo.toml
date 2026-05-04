@@ -32,7 +32,7 @@ sha256 = "1.6.0"
 tar = "0.4.45"
 
 [dev-dependencies]
-libc = "0.2.185"
+libc = "0.2.186"
 
 [target.'cfg(target_env = "musl")'.build-dependencies]
 bindgen = { version = "0.72", default-features = false, features = ["logging", "prettyplease", "static"] }
