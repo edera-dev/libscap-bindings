@@ -891,9 +891,7 @@ pub enum ppm_sc_code {
     PPM_SC_OPEN_TREE_ATTR = 448,
     PPM_SC_FILE_GETATTR = 449,
     PPM_SC_FILE_SETATTR = 450,
-    PPM_SC_LISTNS = 451,
-    PPM_SC_UPROBE = 452,
-    PPM_SC_MAX = 453,
+    PPM_SC_MAX = 451,
 }
 #[repr(u32)]
 #[non_exhaustive]
