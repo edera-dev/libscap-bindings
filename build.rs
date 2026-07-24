@@ -1,10 +1,10 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use flate2::read::GzDecoder;
 use std::{
     env, fs,
-    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
+    thread,
 };
 use tar::Archive;
 
@@ -77,55 +77,44 @@ fn main() {
         fs::remove_file(&stamp).expect("remove libscap src stamp");
     }
 
-    if !repo_dir.exists() {
-        let status = Command::new("git")
-            .args(["clone", LIBSCAP_REPO, repo_dir.to_str().unwrap()])
-            .status()
-            .expect("Failed to clone repository");
+    // The `bpftool` binary is a build dep of libscap. Start its download in
+    // the background so it overlaps with the git fetch below (both are
+    // network-bound); it is then extracted into the repo dir so we can tell
+    // libscap's CMAKE to use the local one, rather than try to find a system
+    // binary.
+    let bpftool_download = spawn_bpftool_download(&repo_dir);
 
-        if !status.success() {
-            panic!("Failed to clone repository");
-        }
-
-        let checkout_dir = fs::canonicalize(repo_dir.clone()).unwrap();
-
-        let status = Command::new("git")
-            .args(["checkout", LIBSCAP_CHECKOUT_SHA])
-            .current_dir(checkout_dir)
-            .status()
-            .expect("Failed to checkout ref {}");
-
-        if !status.success() {
-            panic!("Failed to checkout repository");
-        }
+    if !repo_dir.exists()
+        && let Err(err) = clone_libscap(&repo_dir)
+    {
+        // Remove the partially-initialized repo so the next build attempt
+        // starts from scratch instead of trusting whatever half-state exists.
+        let _ = fs::remove_dir_all(&repo_dir);
+        panic!("Failed to fetch libscap sources: {err}");
     }
 
-    // TODO(bml) - Git 2.49 adds --revision, so the above can be replaced with this,
-    // which is faster. Unfortunately not all runners/cross envs have that one yet.
+    let relative_exe =
+        install_bpftool(&repo_dir, bpftool_download).expect("must fetch bpftool build dep");
 
-    // if !repo_dir.exists() {
-    //     println!("cargo:info=Cloning external repository...");
-
-    //     let status = Command::new("git")
-    //         .args([
-    //             "clone",
-    //             "--revision",
-    //             libscap_checkout_sha,
-    //             "https://github.com/falcosecurity/libs.git",
-    //             repo_dir.to_str().unwrap(),
-    //         ])
-    //         .status()
-    //         .expect("Failed to clone repository");
-
-    //     if !status.success() {
-    //         panic!("Failed to clone repository");
-    //     }
-    // }
-
-    // the `bpftool` binary is a build dep of libscap.
-    // This attemts to fetch and extract it into the build directory,
-    // so we can tell libscap's CMAKE to use the local one, rather than try to find a system binary.
-    let relative_exe = fetch_bpftool(&repo_dir).expect("must fetch bpftool build dep");
+    // The cmake-generated compile rules honor CMAKE_C_COMPILER_LAUNCHER
+    // (sccache/ccache) from the environment, but two libscap build steps
+    // bypass it: the modern_bpf eBPF objects are compiled by
+    // ${MODERN_CLANG_EXE} inside add_custom_command rules, and libbpf builds
+    // through a raw `make` BUILD_COMMAND with an unwrapped CC. Shim both
+    // through the launcher so their compiles are cached too.
+    let launcher = env::var("CMAKE_C_COMPILER_LAUNCHER")
+        .ok()
+        .filter(|launcher| !launcher.is_empty());
+    let mut modern_clang_shim = None;
+    let mut libbpf_cc_shim = None;
+    if cfg!(unix)
+        && let Some(launcher) = &launcher
+    {
+        let clang = env::var("MODERN_CLANG_EXE").unwrap_or_else(|_| "clang".to_string());
+        modern_clang_shim = write_shim(&out_dir, "launcher-clang", launcher, &clang).ok();
+        libbpf_cc_shim = write_shim(&out_dir, "launcher-cc", launcher, "cc").ok();
+    }
+    patch_libbpf_build(&repo_dir, libbpf_cc_shim.as_deref());
 
     let mut cmake_config = cmake::Config::new(&repo_dir);
     cmake_config
@@ -161,7 +150,10 @@ fn main() {
     // require newer, more complete clang-static package versions (20 or so).
     // We get around that by building everything except the eBPF objects with one version
     // of clang/llvm, but using a specific older version override to build the `modern_bpf` progs here.
-    if let Ok(clang_exe) = env::var("MODERN_CLANG_EXE") {
+    if let Some(shim) = &modern_clang_shim {
+        // The shim wraps MODERN_CLANG_EXE (or plain `clang`) in the launcher.
+        cmake_config.define("MODERN_CLANG_EXE", shim);
+    } else if let Ok(clang_exe) = env::var("MODERN_CLANG_EXE") {
         println!("cargo:info=Using MODERN_CLANG_EXE={}", clang_exe);
         cmake_config.define("MODERN_CLANG_EXE", clang_exe);
     }
@@ -297,7 +289,6 @@ fn main() {
         .blocklist_type("scap_fd_type")
         .blocklist_type("scap_l4_proto")
         .blocklist_var("PPM_.*")
-        .emit_clang_ast()
         .generate()
         .expect("Unable to generate bindings");
 
@@ -309,51 +300,137 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 }
 
-/// This will check to see if a tarfile matching our desired checksum already exists
-/// at the target path. If it does, then extract it and use the binary.
-/// If it does not, then delete the target path and refetch, then extract the binary.
-fn fetch_bpftool(out_dir: &Path) -> Result<String> {
-    println!("cargo:rerun-if-env-changed=VENDOR_BPFTOOL_ARCHIVE");
-    let bpftool_dir = out_dir.join("bpftool/");
-    let (arch, expected_sha) = get_arch_sha();
-    let archive_name = format!("bpftool-v{}-{}.tar.gz", BPFTOOL_VERSION, arch);
-    let bpftool_archive = bpftool_dir.join(&archive_name);
+/// Fetch only the pinned commit rather than cloning full history (~4 MB of
+/// pack data instead of ~44 MB). Fetching by SHA is content-addressed, so the
+/// checked-out tree is cryptographically verified against
+/// `LIBSCAP_CHECKOUT_SHA`. Git 2.49's `clone --revision=<sha>` does this in
+/// one step, but not all runners/cross environments ship it yet.
+fn clone_libscap(repo_dir: &Path) -> Result<()> {
+    let repo = repo_dir.to_str().unwrap();
+    run_git(&["init", repo])?;
+    run_git(&["-C", repo, "remote", "add", "origin", LIBSCAP_REPO])?;
+    run_git(&[
+        "-C",
+        repo,
+        "fetch",
+        "--depth=1",
+        "origin",
+        LIBSCAP_CHECKOUT_SHA,
+    ])?;
+    run_git(&[
+        "-C",
+        repo,
+        "-c",
+        "advice.detachedHead=false",
+        "checkout",
+        "--detach",
+        "FETCH_HEAD",
+    ])?;
+    Ok(())
+}
 
-    // Check if archive was previously downloaded and verify its checksum.
-    // If it wasn't, or checksum seems wrong, delete everything and signal refetch.
-    let should_download = if bpftool_archive.exists() {
-        let mut file = fs::File::open(&bpftool_archive)?;
-        let mut contents = Vec::new();
-        file.read_to_end(&mut contents)?;
-
-        let actual_checksum = sha256::digest(&contents);
-
-        if actual_checksum == expected_sha {
-            false
-        } else {
-            println!("cargo:error=bpftool checksum mismatch, redownloading");
-            let _ = fs::remove_dir_all(&bpftool_dir);
-            true
-        }
-    } else {
-        let _ = fs::remove_dir_all(&bpftool_dir);
-        true
-    };
-
-    let _ = fs::create_dir_all(&bpftool_dir);
-    if should_download {
-        // Offline hook: copy a pre-fetched archive instead of downloading,
-        // enforcing the same digest the download path does.
-        if let Ok(archive) = env::var("VENDOR_BPFTOOL_ARCHIVE") {
-            let contents = fs::read(&archive)?;
-            verify_sha256(&contents, &expected_sha, &archive)?;
-            fs::write(&bpftool_archive, contents)?;
-        } else {
-            download_bpftool(&expected_sha, &archive_name, &bpftool_dir)?;
-        }
+fn run_git(args: &[&str]) -> Result<()> {
+    let status = Command::new("git").args(args).status()?;
+    if !status.success() {
+        bail!("`git {}` failed with {}", args.join(" "), status);
     }
+    Ok(())
+}
 
+type BpftoolDownload = Option<thread::JoinHandle<Result<Vec<u8>>>>;
+
+/// Start the bpftool release download on a background thread so it overlaps
+/// with the libscap git fetch. Skipped (returns None) when a previously
+/// downloaded archive with a good checksum is already in place.
+fn spawn_bpftool_download(repo_dir: &Path) -> BpftoolDownload {
+    println!("cargo:rerun-if-env-changed=VENDOR_BPFTOOL_ARCHIVE");
+    let (arch, expected_sha) = get_arch_sha();
+    let archive = repo_dir.join("bpftool").join(archive_name(&arch));
+    if archive_checksum_ok(&archive, &expected_sha) {
+        return None;
+    }
+    // Offline hook: read a pre-fetched archive instead of downloading,
+    // enforcing the same digest the download path does.
+    let vendored = env::var("VENDOR_BPFTOOL_ARCHIVE").ok();
+    Some(thread::spawn(move || match vendored {
+        Some(path) => read_vendored_bpftool(&path, &expected_sha),
+        None => download_bpftool_bytes(&arch, &expected_sha),
+    }))
+}
+
+fn read_vendored_bpftool(path: &str, expected_sha: &str) -> Result<Vec<u8>> {
+    let contents = fs::read(path).with_context(|| format!("reading {path}"))?;
+    verify_sha256(&contents, expected_sha, path)?;
+    Ok(contents)
+}
+
+/// Extract the bpftool binary into `<repo>/bpftool/`, first landing the
+/// background download if one was started (otherwise the verified,
+/// previously downloaded archive is reused).
+fn install_bpftool(repo_dir: &Path, download: BpftoolDownload) -> Result<String> {
+    let (arch, _) = get_arch_sha();
+    let bpftool_dir = repo_dir.join("bpftool");
+    let archive_name = archive_name(&arch);
+    if let Some(handle) = download {
+        let bytes = handle
+            .join()
+            .map_err(|_| anyhow!("bpftool download thread panicked"))??;
+        // Replace whatever stale or partial state exists before unpacking.
+        let _ = fs::remove_dir_all(&bpftool_dir);
+        fs::create_dir_all(&bpftool_dir)?;
+        fs::write(bpftool_dir.join(&archive_name), &bytes)?;
+    }
     extract_bpftool(&archive_name, &bpftool_dir)
+}
+
+fn archive_name(arch: &str) -> String {
+    format!("bpftool-v{}-{}.tar.gz", BPFTOOL_VERSION, arch)
+}
+
+fn archive_checksum_ok(archive: &Path, expected_sha: &str) -> bool {
+    fs::read(archive).is_ok_and(|bytes| sha256::digest(bytes.as_slice()) == expected_sha)
+}
+
+/// Write a tiny wrapper script that runs `tool` through the configured
+/// compiler launcher (sccache/ccache), for build steps that don't honor
+/// CMAKE_C_COMPILER_LAUNCHER on their own.
+fn write_shim(out_dir: &Path, name: &str, launcher: &str, tool: &str) -> Result<PathBuf> {
+    let path = out_dir.join(name);
+    fs::write(&path, format!("#!/bin/sh\nexec {launcher} {tool} \"$@\"\n"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms)?;
+    }
+    Ok(path)
+}
+
+/// libscap builds libbpf via an ExternalProject BUILD_COMMAND that invokes
+/// raw `make`: it cannot inherit the jobserver (so it builds -j1) and its CC
+/// is never routed through the compiler launcher. Patch the pinned cmake
+/// module to parallelize it and (when a launcher is active) wrap CC.
+fn patch_libbpf_build(repo_dir: &Path, cc_shim: Option<&Path>) {
+    let module = repo_dir.join("cmake/modules/libbpf.cmake");
+    let Ok(text) = fs::read_to_string(&module) else {
+        return;
+    };
+    let jobs = env::var("NUM_JOBS").unwrap_or_else(|_| "1".to_string());
+    let mut replacement = format!("make -j{jobs}");
+    if let Some(shim) = cc_shim {
+        replacement.push_str(&format!(" CC={}", shim.display()));
+    }
+    replacement.push_str(" BUILD_STATIC_ONLY=y");
+    let patched = text.replace("make BUILD_STATIC_ONLY=y", &replacement);
+    if patched != text {
+        let _ = fs::write(&module, patched);
+    } else if !text.contains("make -j") {
+        println!(
+            "cargo:warning=libbpf.cmake BUILD_COMMAND pattern not found; \
+             libbpf will build single-threaded without the compiler launcher"
+        );
+    }
 }
 
 fn get_arch_sha() -> (String, String) {
@@ -370,6 +447,33 @@ fn get_arch_sha() -> (String, String) {
     }
 }
 
+fn download_bpftool_bytes(arch: &str, expected_sha: &str) -> Result<Vec<u8>> {
+    let url = format!(
+        "{}/v{}/{}",
+        BPFTOOL_RELEASE_URL,
+        BPFTOOL_VERSION,
+        archive_name(arch)
+    );
+
+    // ureq (rustls + ring, bundled webpki roots) follows the GitHub release
+    // redirect to the CDN and returns an error on a non-2xx status. Its
+    // read_to_vec() defaults to a 10 MiB cap and the bpftool tarball is already
+    // ~9.6 MiB, so raise the limit well clear of the release size while still
+    // bounding memory. The download is content-verified against expected_sha
+    // below, so TLS here is defense in depth.
+    let content = ureq::get(&url)
+        .call()
+        .with_context(|| format!("downloading bpftool from {url}"))?
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_to_vec()
+        .with_context(|| format!("reading bpftool response body from {url}"))?;
+
+    verify_sha256(&content, expected_sha, &url)?;
+    Ok(content)
+}
+
 fn verify_sha256(contents: &[u8], expected_sha: &str, source: &str) -> Result<()> {
     let actual_checksum = sha256::digest(contents);
     if actual_checksum != expected_sha {
@@ -383,32 +487,9 @@ fn verify_sha256(contents: &[u8], expected_sha: &str, source: &str) -> Result<()
     Ok(())
 }
 
-fn download_bpftool(expected_sha: &str, archive_name: &str, bpftool_dir: &Path) -> Result<()> {
-    let url = format!(
-        "{}/v{}/{}",
-        BPFTOOL_RELEASE_URL, BPFTOOL_VERSION, archive_name
-    );
-
-    let response = reqwest::blocking::get(&url)?;
-    if !response.status().is_success() {
-        bail!(format!(
-            "failed to download bpftool: HTTP {:?}",
-            response.status()
-        ));
-    }
-
-    let content = response.bytes()?;
-    verify_sha256(&content, expected_sha, &url)?;
-
-    let tarball_path = bpftool_dir.join(archive_name);
-    let mut tarball_file = fs::File::create(&tarball_path)?;
-    tarball_file.write_all(&content)?;
-    Ok(())
-}
-
 /// returns a relative path to the bpftool binary as a string (like `bpftool/bpftool`).
 /// this is in the format (binary-parent-dir/binary) as that is what cmake will understand.
-fn extract_bpftool(archive_name: &str, bpftool_dir: &PathBuf) -> Result<String> {
+fn extract_bpftool(archive_name: &str, bpftool_dir: &Path) -> Result<String> {
     let tarball_path = bpftool_dir.join(archive_name);
     let tarball_file = fs::File::open(&tarball_path)?;
     let tar_gz = GzDecoder::new(tarball_file);

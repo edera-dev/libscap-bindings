@@ -27,7 +27,9 @@ bindgen = { version = "0.72", default-features = false, features = [
 ] }
 cmake = "0.1"
 flate2 = { version = "1.1.9", features = ["zlib-rs"], default-features = false }
-reqwest = { version= "0.13", features = ["blocking"] }
+# rustls + ring + bundled webpki roots, no async runtime and no aws-lc-rs.
+# We only need a one-shot HTTPS GET (the download is SHA256-verified below).
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 sha256 = "1.6.0"
 tar = "0.4.46"
 
