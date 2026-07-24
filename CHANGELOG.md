@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.9](https://github.com/edera-dev/libscap-bindings/compare/v0.0.8...v0.0.9) - 2026-07-24
+
+### Other
+
+- download bpftool with ureq instead of reqwest
+- stop emitting the clang AST during bindgen
+- overlap the bpftool download with the libscap git fetch
+- route launcher-bypassing compiles through sccache, parallelize libbpf
+- fetch only the pinned libscap commit instead of a full clone
+
 ## [0.0.8](https://github.com/edera-dev/libscap-bindings/compare/v0.0.7...v0.0.8) - 2026-06-05
 
 ### Other
