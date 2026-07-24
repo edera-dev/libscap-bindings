@@ -21,3 +21,15 @@ If that feature flag is **enabled** (as it is by default), the upstream libscap 
 ``` toml
 libscap-bindings = { version = 0.0.1, features = ["full_bindings"]}
 ```
+
+## Offline / hermetic builds
+
+With `full_bindings` enabled, `build.rs` performs two explicit fetches of its own: it clones the libscap repo and downloads a `bpftool` release archive. Sandboxed build environments (Nix, Bazel, air-gapped CI) can redirect both to pre-fetched inputs with the following environment variables. All are optional: anything unset falls back to the normal network path.
+
+| Variable | Replaces |
+| --- | --- |
+| `VENDOR_LIBSCAP_SRC_DIR` | `git clone` of falcosecurity/libs — points at an extracted checkout of the commit pinned in `build.rs`; a `.git` directory is not required (see the version variables below) |
+| `VENDOR_BPFTOOL_ARCHIVE` | the `bpftool-v<version>-<arch>.tar.gz` release download; the archive is verified against the same pinned sha256 the download path uses |
+| `VENDOR_LIBS_VERSION`, `VENDOR_DRIVER_VERSION` | the `git describe` version detection, for `.git`-less vendored trees only — unset, such trees build as version `0.0.0` (libscap's own no-git fallback) |
+
+The remaining downloads happen inside cmake (ExternalProject archives for zlib/libbpf/uthash, FetchContent for libelf), which already accepts pre-existing files: pre-seed the archives into the corresponding download directories under the cmake build dir and cmake's own `URL_HASH` checks verify them and skip the download, so no `build.rs` involvement is needed.
