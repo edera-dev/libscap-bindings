@@ -21,7 +21,7 @@ strum_macros = "0.28"
 
 [build-dependencies]
 anyhow = "1.0.102"
-bindgen = { version = "0.72", default-features = false, features = [
+bindgen = { version = "0.73", default-features = false, features = [
   "logging",
   "prettyplease",
 ] }
@@ -37,7 +37,7 @@ tar = "0.4.46"
 libc = "0.2.186"
 
 [target.'cfg(target_env = "musl")'.build-dependencies]
-bindgen = { version = "0.72", default-features = false, features = ["logging", "prettyplease", "static"] }
+bindgen = { version = "0.73", default-features = false, features = ["logging", "prettyplease", "static"] }
 
 [features]
 default = ["full_bindings"]
