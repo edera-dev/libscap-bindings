@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     thread,
+    time::Duration,
 };
 use tar::Archive;
 
@@ -85,11 +86,15 @@ fn main() {
     let bpftool_download = spawn_bpftool_download(&repo_dir);
 
     if !repo_dir.exists()
-        && let Err(err) = clone_libscap(&repo_dir)
+        && let Err(err) = retry_network("libscap source fetch", || {
+            clone_libscap(&repo_dir).inspect_err(|_| {
+                // Remove the partially-initialized repo so the next attempt
+                // (or the next build) starts from scratch instead of trusting
+                // whatever half-state exists.
+                let _ = fs::remove_dir_all(&repo_dir);
+            })
+        })
     {
-        // Remove the partially-initialized repo so the next build attempt
-        // starts from scratch instead of trusting whatever half-state exists.
-        let _ = fs::remove_dir_all(&repo_dir);
         panic!("Failed to fetch libscap sources: {err}");
     }
 
@@ -337,6 +342,35 @@ fn run_git(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Retry budget for the network fetches. Sleeps grow linearly (2s, 4s, 6s),
+/// so the budget rides out about twelve seconds of registry or mirror
+/// trouble; a genuine outage still fails, with the last error propagated.
+const NETWORK_TRIES: u32 = 4;
+
+/// Run a network-bound operation, retrying transient failures. These fetches
+/// are the dominant CI failure mode for this build script: a dropped
+/// connection to GitHub fails an entire build that a retry seconds later
+/// would have saved.
+fn retry_network<T>(what: &str, mut op: impl FnMut() -> Result<T>) -> Result<T> {
+    let mut attempt = 1;
+    loop {
+        match op() {
+            Ok(value) => return Ok(value),
+            Err(err) if attempt < NETWORK_TRIES => {
+                let delay = Duration::from_secs(u64::from(attempt) * 2);
+                println!(
+                    "cargo:warning={what} failed (attempt {attempt}/{NETWORK_TRIES}): {err:#}; \
+                     retrying in {}s",
+                    delay.as_secs()
+                );
+                thread::sleep(delay);
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 type BpftoolDownload = Option<thread::JoinHandle<Result<Vec<u8>>>>;
 
 /// Start the bpftool release download on a background thread so it overlaps
@@ -354,7 +388,11 @@ fn spawn_bpftool_download(repo_dir: &Path) -> BpftoolDownload {
     let vendored = env::var("VENDOR_BPFTOOL_ARCHIVE").ok();
     Some(thread::spawn(move || match vendored {
         Some(path) => read_vendored_bpftool(&path, &expected_sha),
-        None => download_bpftool_bytes(&arch, &expected_sha),
+        // The digest check runs inside each attempt, so a corrupted transfer
+        // retries the same way a dropped connection does.
+        None => retry_network("bpftool download", || {
+            download_bpftool_bytes(&arch, &expected_sha)
+        }),
     }))
 }
 
