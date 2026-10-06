@@ -33,6 +33,7 @@ fn main() {
     let repo_dir = out_dir.join("external-libscap");
     let target = std::env::var("TARGET").unwrap();
     let is_musl = target.contains("musl");
+    let is_aarch64 = target.starts_with("aarch64");
 
     // Offline hook: copy a pre-fetched falcosecurity/libs tree instead of
     // cloning. The tree need not contain .git — .git-less trees take their
@@ -114,7 +115,7 @@ fn main() {
         modern_clang_shim = write_shim(&out_dir, "launcher-clang", launcher, &clang).ok();
         libbpf_cc_shim = write_shim(&out_dir, "launcher-cc", launcher, "cc").ok();
     }
-    patch_libbpf_build(&repo_dir, libbpf_cc_shim.as_deref());
+    patch_libbpf_build(&repo_dir, libbpf_cc_shim.as_deref(), is_musl && is_aarch64);
 
     let mut cmake_config = cmake::Config::new(&repo_dir);
     cmake_config
@@ -411,7 +412,8 @@ fn write_shim(out_dir: &Path, name: &str, launcher: &str, tool: &str) -> Result<
 /// raw `make`: it cannot inherit the jobserver (so it builds -j1) and its CC
 /// is never routed through the compiler launcher. Patch the pinned cmake
 /// module to parallelize it and (when a launcher is active) wrap CC.
-fn patch_libbpf_build(repo_dir: &Path, cc_shim: Option<&Path>) {
+/// Also patch `EXTRA_CFLAGS` to avoid a build failure on aarch64.
+fn patch_libbpf_build(repo_dir: &Path, cc_shim: Option<&Path>, no_outline_atomics: bool) {
     let module = repo_dir.join("cmake/modules/libbpf.cmake");
     let Ok(text) = fs::read_to_string(&module) else {
         return;
@@ -423,13 +425,33 @@ fn patch_libbpf_build(repo_dir: &Path, cc_shim: Option<&Path>) {
     }
     replacement.push_str(" BUILD_STATIC_ONLY=y");
     let patched = text.replace("make BUILD_STATIC_ONLY=y", &replacement);
-    if patched != text {
-        let _ = fs::write(&module, patched);
-    } else if !text.contains("make -j") {
+    if !patched.contains(&replacement) {
         println!(
             "cargo:warning=libbpf.cmake BUILD_COMMAND pattern not found; \
              libbpf will build single-threaded without the compiler launcher"
         );
+    }
+
+    let original_extra_cflags = "EXTRA_CFLAGS=-fPIC ";
+    let mut replacement_extra_cflags = String::from("EXTRA_CFLAGS=");
+
+    if no_outline_atomics {
+        // Avoid a build failure on aarch64 + MUSL:
+        // https://linear.app/edera/issue/COR-95 (undefined reference to `__aarch64_ldadd4_sync')
+        // This flag is only valid on aarch64.
+        replacement_extra_cflags.push_str("-mno-outline-atomics ");
+    }
+    replacement_extra_cflags.push_str("-fPIC ");
+
+    let patched = patched.replace(original_extra_cflags, &replacement_extra_cflags);
+    if !patched.contains(&replacement_extra_cflags) {
+        println!(
+            "cargo:warning=libbpf.cmake EXTRA_CFLAGS could not be patched; \
+            expect potential build failures"
+        );
+    }
+    if patched != text {
+        let _ = fs::write(&module, patched);
     }
 }
 
