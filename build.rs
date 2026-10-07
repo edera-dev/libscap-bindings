@@ -14,7 +14,7 @@ const BPFTOOL_AMD64_SHA: &str = "51ffd3dd4f46fdc46736433a971e828dc70835c6b18ad20
 const BPFTOOL_RELEASE_URL: &str = "https://github.com/libbpf/bpftool/releases/download";
 
 const LIBSCAP_REPO: &str = "https://github.com/falcosecurity/libs.git";
-const LIBSCAP_CHECKOUT_SHA: &str = "7250ae96aa8878385f85a5643a43459d3d32fca4";
+const LIBSCAP_CHECKOUT_SHA: &str = "8fc2f1fbfc90f8ce7f68e00cdfa692cc7a9983a3";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_FULL_BINDINGS");
