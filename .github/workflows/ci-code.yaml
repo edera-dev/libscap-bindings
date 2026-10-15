@@ -58,6 +58,10 @@ jobs:
       - name: cargo build
         run: cargo build
 
+      # cargo publish refuses a package whose build.rs rewrites these
+      - name: check checked-in bindings are current
+        run: git diff --exit-code -- src/consts.rs src/enums.rs
+
   clippy:
     runs-on: ubuntu-latest
     strategy:
