@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.11](https://github.com/edera-dev/libscap-bindings/compare/v0.0.10...v0.0.11) - 2026-10-15
+
+### Fixed
+
+- *(toolchain)* Actually back this back down a bit ([#110](https://github.com/edera-dev/libscap-bindings/pull/110))
+
+### Other
+
+- *(toolchain)* bump rust version to 1.99.1 ([#109](https://github.com/edera-dev/libscap-bindings/pull/109))
+- *(deps)* Bump the cargo-updates group across 1 directory with 5 updates ([#103](https://github.com/edera-dev/libscap-bindings/pull/103))
+- *(libscap)* bump to upstream 0.26.1 to get bpf fix for newer kernels ([#107](https://github.com/edera-dev/libscap-bindings/pull/107))
+
 ## [0.0.10](https://github.com/edera-dev/libscap-bindings/compare/v0.0.9...v0.0.10) - 2026-10-07
 
 ### Fixed
